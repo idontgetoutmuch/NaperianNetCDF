@@ -106,6 +106,36 @@ instance (KnownNat n, KnownNat m) => NcStore (Hyper ((Vector n) : '[Vector m])) 
       m = fromIntegral $ natVal (Proxy :: Proxy m)
       l = sizeOf (undefined :: e)
 
+instance (KnownNat n, KnownNat m, KnownNat q) =>
+         NcStore (Hyper ((Vector n) : '[Vector m, Vector q])) where
+  toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
+  fromForeignPtr :: forall e . Storable e =>
+                    ForeignPtr e -> [Int] -> Hyper '[Vector n, Vector m, Vector q] e
+  fromForeignPtr p _ = r
+    where
+      xs :: [Hyper '[Vector m, Vector q] e]
+      xs = map (\i -> fromForeignPtr (plusForeignPtr p (i * m * q * l)) undefined)
+               [0 .. n - 1]
+
+      y0 :: Hyper '[Vector m, Vector q] [e]
+      y0 = Prism $ Prism $ Scalar $
+           fromJust $ fromList $ Prelude.replicate q $
+           fromJust $ fromList $ Prelude.replicate m []
+
+      ys :: Hyper '[Vector m, Vector q] [e]
+      ys = foldr (hzipWith (:)) y0 xs
+
+      zs :: Hyper '[Vector m, Vector q] (Vector n e)
+      zs = fmap (fromJust . fromList) ys
+
+      r :: Hyper '[Vector n, Vector m, Vector q] e
+      r = Prism zs
+
+      n = fromIntegral $ natVal (Proxy :: Proxy n)
+      m = fromIntegral $ natVal (Proxy :: Proxy m)
+      q = fromIntegral $ natVal (Proxy :: Proxy q)
+      l = sizeOf (undefined :: e)
+
 x :: Matrix 2 3 Int
 x = [ [ 1, 2, 3 ]
     , [ 4, 5, 6 ]
@@ -137,6 +167,75 @@ u = [ [ 1, 2, 3, 4, 5 ]
 v4 :: Hyper '[Vector 5, Vector 2] Int
 v4 = Prism (Prism (Scalar u))
 
+v5 :: Hyper '[Vector 5, Vector 2, Vector 3] Int
+v5 = Prism (Prism (Prism (Scalar a)))
+
+a :: Vector 3 (Vector 2 (Vector 5 Int))
+a = fromJust $ fromList $ Prelude.replicate 3 b
+
+b :: Vector 2 (Vector 5 Int)
+b = [ [ 1, 2, 3, 4, 5 ]
+    , [ 6, 7, 8, 9, 10 ]
+    ]
+
+-- foo = transposeH (Prism ((fmap (fromJust . fromList) $ foldr (hzipWith (:)) ((Prism $ Scalar $ fromJust $ fromList $ Prelude.replicate 5 []) :: Hyper '[Vector 5] [Int]) [Prism $ Scalar [1..5] :: Hyper '[Vector 5] Int, Prism $ Scalar [6..10] :: Hyper '[Vector 5] Int]) :: Hyper '[Vector 5] (Vector 2 Int)))
+
+aaa :: Hyper '[Vector 5] [Int]
+aaa = Prism $ Scalar $ fromJust $ fromList $ Prelude.replicate 5 []
+
+ccc :: [Hyper '[Vector 5] Int]
+ccc = [ Prism $ Scalar [1..5] :: Hyper '[Vector 5] Int
+      , Prism $ Scalar [6..10] :: Hyper '[Vector 5] Int]
+
+cccc :: [Hyper '[Vector 5, Vector 2] Int]
+cccc = [ Prism $ Prism $ Scalar
+         [ [ 1 .. 5 ]
+         , [ 6 .. 10 ]
+         ]
+       , Prism $ Prism $ Scalar
+         [ [ 11 .. 15 ]
+         , [ 16 .. 20 ]
+         ]
+       , Prism $ Prism $ Scalar
+         [ [ 21 .. 25 ]
+         , [ 26 .. 30 ]
+         ]
+       ]
+
+bbbb :: Hyper fs [Int] -> [Hyper fs Int] -> Hyper fs [Int]
+bbbb = foldr (hzipWith (:))
+
+aaaa :: Hyper '[Vector 5, Vector 2] [Int]
+aaaa = Prism $ Prism $ Scalar $
+       fromJust $ fromList $ Prelude.replicate 2 $
+       fromJust $ fromList $ Prelude.replicate 5 []
+
+zzz :: Vector 2 (Vector 5 [Int])
+zzz = fromJust $ fromList $ Prelude.replicate 2 $
+      fromJust $ fromList $ Prelude.replicate 5 []
+
+dddd :: Hyper '[Vector 5, Vector 2] [Int]
+dddd = bbbb aaaa cccc
+
+bbb :: KnownNat n =>
+       Hyper '[Vector n] [Int] -> [Hyper '[Vector n] Int] -> Hyper '[Vector n] [Int]
+bbb = foldr (hzipWith (:))
+
+ddd :: Hyper '[Vector 5] [Int]
+ddd = bbb aaa ccc
+
+eee :: Hyper '[Vector 5] (Vector 2 Int)
+eee = fmap (fromJust . fromList) ddd
+
+eeee :: Hyper '[Vector 5, Vector 2] (Vector 3 Int)
+eeee = fmap (fromJust . fromList) dddd
+
+fff :: Hyper '[Vector 2, Vector 5] Int
+fff = Prism eee
+
+ffff :: Hyper '[Vector 3, Vector 5, Vector 2] Int
+ffff = Prism eeee
+
 main :: IO ()
 main = do
   let scalarPi :: Hyper '[] Double
@@ -155,3 +254,8 @@ main = do
       bar2 = fromForeignPtr foo2 undefined
   putStrLn $ show v4
   putStrLn $ show bar2
+  let foo3 = toForeignPtr v5
+      bar3 :: Hyper '[Vector 5, Vector 2, Vector 3] Int
+      bar3 = fromForeignPtr foo3 undefined
+  putStrLn $ show v5
+  putStrLn $ show bar3
