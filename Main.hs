@@ -42,44 +42,26 @@ instance (KnownNat n, NcEmpty (Hyper fs), Shapely fs) =>
     where
       n = fromIntegral $ natVal (Proxy :: Proxy n)
 
-class Urk fs where
-  urk :: fs e -> [e]
-  unUrk :: [e] -> fs e
+class Urm fs where
+  urm :: fs e -> [e]
+  unUrm :: [e] -> fs e
 
-instance Urk (Hyper '[]) where
-  urk (Scalar c) = [c]
-  unUrk [c] = Scalar c
-  unUrk cs  = error $ "Urk: wrong length = " ++ show (Prelude.length cs)
+instance Urm (Hyper '[]) where
+  urm (Scalar c) = [c]
+  unUrm [c] = Scalar c
+  unUrm cs  = error $ "Urm: wrong length = " ++ show (Prelude.length cs)
 
-t1 :: [Hyper '[Vector 3] Int]
-t1 = map (Prism . Scalar) [[1, 2, 3], [4, 5, 6]]
-
-t2 :: [Hyper '[Vector 2] Int]
-t2 = map (Prism . Scalar) [[1, 2], [3, 4], [5, 6]]
-
-instance (KnownNat n, Urk (Hyper fs), NcEmpty (Hyper fs), Shapely fs) =>
-         Urk (Hyper ((Vector n) : fs)) where
-  urk (Prism c) = concat $ urk $ fmap toList c
-  unUrk :: forall e . [e] -> Hyper ((Vector n) : fs) e
-  unUrk cs = Prism zs
+instance (KnownNat n, Urm (Hyper fs), Shapely fs) =>
+         Urm (Hyper ((Vector n) : fs)) where
+  urm (Prism c) = concat $ urm $ fmap toList c
+  unUrm :: forall e . [e] -> Hyper ((Vector n) : fs) e
+  unUrm cs = Prism $ unUrm us
     where
-      x0 :: Hyper fs e
-      x0 = unUrk $ take n cs
-
-      -- [<1,2>, <3,4>, <5,6>]
-      xs :: [Hyper fs e]
-      xs = map unUrk $ chunksOf m cs
-
-      -- foldr (hzipWith (:)) <[],[]> [<1,2>, <3,4>, <5,6>]
-      -- <[1, 3, 5],[2, 4, 6]>
-      ys :: Hyper fs [e]
-      ys = foldr (hzipWith (:)) ncEmpty xs
-
-      zs :: Hyper fs (Vector n e)
-      zs = fmap (fromJust . fromList) ys
+      us :: [Vector n e]
+      us = map (fromJust . fromList) $
+           chunksOf n cs
 
       n = fromIntegral $ natVal (Proxy :: Proxy n)
-      m = hsize (x0 :: Hyper fs e)
 
 instance NcStore (Hyper '[]) where
   toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
@@ -203,8 +185,8 @@ main = do
   putStrLn $ show v5
   putStrLn $ show bar3
 
-roundTrip :: Hyper '[Vector 5, Vector 2, Vector 3] Int -> Hyper '[Vector 5, Vector 2, Vector 3] Int
-roundTrip = unUrk . urk
+-- roundTrip :: Hyper '[Vector 5, Vector 2, Vector 3] Int -> Hyper '[Vector 5, Vector 2, Vector 3] Int
+-- roundTrip = unUrk . urk
 
 -- 1,1,1 -> 1,1,1
 -- 1,1,2 -> 2,1,1
