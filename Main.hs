@@ -26,7 +26,9 @@ import qualified Data.Vector.Storable as SV
 
 import Data.Maybe ( fromJust )
 
-import Data.Foldable       ( toList )
+import Data.Foldable ( toList )
+import Data.List.Split
+
 
 class NcEmpty fs where
   ncEmpty :: fs [e]
@@ -42,12 +44,42 @@ instance (KnownNat n, NcEmpty (Hyper fs), Shapely fs) =>
 
 class Urk fs where
   urk :: fs e -> [e]
+  unUrk :: [e] -> fs e
 
 instance Urk (Hyper '[]) where
   urk (Scalar c) = [c]
+  unUrk [c] = Scalar c
+  unUrk cs  = error $ "Urk: wrong length = " ++ show (Prelude.length cs)
 
-instance (KnownNat n, Urk (Hyper fs)) => Urk (Hyper ((Vector n) : fs)) where
+t1 :: [Hyper '[Vector 3] Int]
+t1 = map (Prism . Scalar) [[1, 2, 3], [4, 5, 6]]
+
+t2 :: [Hyper '[Vector 2] Int]
+t2 = map (Prism . Scalar) [[1, 2], [3, 4], [5, 6]]
+
+instance (KnownNat n, Urk (Hyper fs), NcEmpty (Hyper fs), Shapely fs) =>
+         Urk (Hyper ((Vector n) : fs)) where
   urk (Prism c) = concat $ urk $ fmap toList c
+  unUrk :: forall e . [e] -> Hyper ((Vector n) : fs) e
+  unUrk cs = Prism zs
+    where
+      x0 :: Hyper fs e
+      x0 = unUrk $ take n cs
+
+      -- [<1,2>, <3,4>, <5,6>]
+      xs :: [Hyper fs e]
+      xs = map unUrk $ chunksOf m cs
+
+      -- foldr (hzipWith (:)) <[],[]> [<1,2>, <3,4>, <5,6>]
+      -- <[1, 3, 5],[2, 4, 6]>
+      ys :: Hyper fs [e]
+      ys = foldr (hzipWith (:)) ncEmpty xs
+
+      zs :: Hyper fs (Vector n e)
+      zs = fmap (fromJust . fromList) ys
+
+      n = fromIntegral $ natVal (Proxy :: Proxy n)
+      m = hsize (x0 :: Hyper fs e)
 
 instance NcStore (Hyper '[]) where
   toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
@@ -130,6 +162,23 @@ b2 = [ [ 21, 22, 23, 24, 25 ]
      , [ 26, 27, 28, 29, 30 ]
      ]
 
+v6 :: Hyper '[Vector 3] Int
+v6 = Prism $ Scalar ([ 1, 2, 3 ])
+
+c0 :: Vector 2 (Vector 2 Int)
+c0 = [ [1, 2]
+     , [3, 4] ]
+
+c1 :: Vector 2 (Vector 2 Int)
+c1 = [ [5, 6]
+     , [7, 8] ]
+
+d :: Vector 2 (Vector 2 (Vector 2 Int))
+d = fromJust $ fromList $ [c0, c1]
+
+v7 :: Hyper '[Vector 2, Vector 2, Vector 2] Int
+v7 = Prism $ Prism $ Prism $ Scalar d
+
 main :: IO ()
 main = do
   let scalarPi :: Hyper '[] Double
@@ -153,3 +202,16 @@ main = do
       bar3 = fromForeignPtr foo3 undefined
   putStrLn $ show v5
   putStrLn $ show bar3
+
+roundTrip :: Hyper '[Vector 5, Vector 2, Vector 3] Int -> Hyper '[Vector 5, Vector 2, Vector 3] Int
+roundTrip = unUrk . urk
+
+-- 1,1,1 -> 1,1,1
+-- 1,1,2 -> 2,1,1
+-- 1,1,3 -> 3,1,1
+-- 1,1,4 -> 1,2,1
+-- 1,1,5 -> 2,2,1
+-- 1,2,1 -> 3,2,1
+-- 1,2,2 -> 1,1,2
+-- 1,2,3 -> 2,1,2
+-- 1,2,3 -> 3,1,2
