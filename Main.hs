@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+-- {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 
@@ -63,34 +63,34 @@ instance (KnownNat n, Urm (Hyper fs), Shapely fs) =>
 
       n = fromIntegral $ natVal (Proxy :: Proxy n)
 
+instance (KnownNat n, Storable e) => Storable (Vector n e) where
+  poke _p _v = error "poke: Vector n e"
+  peek _p = error "peek: Vector n e"
+  sizeOf _ = n * sizeOf (undefined :: e)
+    where
+      n = fromIntegral $ natVal (Proxy :: Proxy n)
+
 instance NcStore (Hyper '[]) where
   toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
   fromForeignPtr p _ = Scalar . head . SV.toList $ SV.unsafeFromForeignPtr0 p 1
+  smap = error "smap: NcStore (Hyper '[])"
 
 instance (KnownNat n, Shapely fs, NcStore (Hyper fs), NcEmpty (Hyper fs)) =>
          NcStore (Hyper ((Vector n) : fs)) where
-  type NcStoreExtraCon (Hyper ((Vector n) : fs)) e = NcStoreExtraCon (Hyper fs) e
+  type NcStoreExtraCon (Hyper ((Vector n) : fs)) e = NcStoreExtraCon (Hyper fs) (Vector n e)
   toForeignPtr :: forall e . Storable e =>
                   Hyper ((Vector n) : fs) e -> ForeignPtr e
   toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
-  fromForeignPtr :: forall e . (Storable e, NcStoreExtraCon (Hyper fs) e) =>
+  fromForeignPtr :: forall e . (Storable e , NcStoreExtraCon (Hyper fs) (Vector n e)) =>
                     ForeignPtr e -> [Int] -> Hyper ((Vector n) : fs) e
-  fromForeignPtr p _ = Prism zs
+  fromForeignPtr p _ = Prism ws
     where
-      xs :: [Hyper fs e]
-      xs = map (\i -> fromForeignPtr (plusForeignPtr p (i * m * l)) undefined)
-               [0 .. n - 1]
+      q :: ForeignPtr (Vector n e)
+      q = castForeignPtr p
 
-      ys :: Hyper fs [e]
-      ys = foldr (hzipWith (:)) ncEmpty xs
-
-      zs :: Hyper fs (Vector n e)
-      zs = fmap (fromJust . fromList) ys
-
-      n = fromIntegral $ natVal (Proxy :: Proxy n)
-      -- m = hsize (undefined :: Hyper fs e)
-      m = hsize ((xs!!0) :: Hyper fs e)
-      l = sizeOf (undefined :: e)
+      ws :: Hyper fs (Vector n e)
+      ws = fromForeignPtr q undefined
+  smap = error "smap: NcStore (Hyper ((Vector n) : fs))"
 
 x :: Matrix 2 3 Int
 x = [ [ 1, 2, 3 ]
