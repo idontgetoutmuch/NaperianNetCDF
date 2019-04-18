@@ -5,10 +5,10 @@
 Introduction
 ============
 
-Suppose you have some array-like data store in
+Suppose you have some array-like data stored in
 [NetCDF](https://en.wikipedia.org/wiki/NetCDF) such as [surface sea
 temperature](https://www.unidata.ucar.edu/software/netcdf/examples/files.html)
-at given positiosn (latitude and longitude) over time. It's possible
+at given positions (latitude and longitude) over time. It's possible
 to do
 [APL](https://en.wikipedia.org/wiki/APL_(programming_language))-like
 programming in Haskell using [Naperian
@@ -19,6 +19,9 @@ dimension is typed with the size of the data in that dimension?
 
 [`Data.NetCDF.Store`](https://hackage.haskell.org/package/hnetcdf-0.5.0.0/docs/Data-NetCDF-Store.html)
 contains the `NcStore` store class. So all we need to is implement this class for the appropriate structure in the [Naperian](http://hackage.haskell.org/package/Naperian-0.1.1.0/docs/Naperian.html) package.
+
+A Simpler Class
+===============
 
 Before we start having fun with pointers, let's try implementing a
 simpler but similar class.
@@ -120,6 +123,9 @@ Let's check things are working as intended.
      <<11,12,13,14,15>,<16,17,18,19,20>>,
      <<21,22,23,24,25>,<26,27,28,29,30>>>
 
+The Real Deal
+=============
+
 Now let's implement an instance for the type class that we really want.
 
 Again the base instance is straightforward.
@@ -129,6 +135,8 @@ Again the base instance is straightforward.
 >   toForeignPtr = fst . SV.unsafeToForeignPtr0 . SV.fromList . elements
 >   fromForeignPtr p _ = Scalar . head . SV.toList $ SV.unsafeFromForeignPtr0 p 1
 >   smap = error "smap: NcStore (Hyper '[])"
+
+The instance for recursion is not much harder.
 
 > instance (KnownNat n, Shapely fs, NcStore (Hyper fs)) =>
 >          NcStore (Hyper ((Vector n) : fs)) where
@@ -198,6 +206,9 @@ it has consistent dimensions.
 >           foldrH (-) 0 $ transposeH y
 >   return ()
 
+Tying Dynamic to Static
+=======================
+
 Of course we need a way of tying together the dynamic nature of
 external data with our statically consistent program.
 
@@ -234,7 +245,7 @@ external data with our statically consistent program.
 
 > main :: IO ()
 > main = do
->   enc <- openFile "/Users/dom/Downloads/tos_O1_2001-2002.nc"
+>   enc <- openFile "tos_O1_2001-2002.nc"
 >   case enc of
 >     Left e -> error $ show e
 >     Right nc -> withNc nc f
