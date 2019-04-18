@@ -1,25 +1,47 @@
 {-# OPTIONS_GHC -Wall #-}
--- {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE TypeFamilies #-}
-
+{-# LANGUAGE InstanceSigs        #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 module Main (main) where
 
 import Naperian
-import NaperianExample
+import Data.Naperian.NetCDF ()
 import GHC.ForeignPtr
 import Data.NetCDF.Store
 import Data.Maybe ( fromJust )
+import Data.Proxy
+import GHC.TypeLits
+import Data.List.Split
+import Data.Foldable ( toList )
 
+
+class ListLike fs where
+  toListLike :: fs e -> [e]
+  unToListLike :: [e] -> fs e
+
+instance ListLike (Hyper '[]) where
+  toListLike (Scalar c) = [c]
+  unToListLike [c] = Scalar c
+  unToListLike cs  = error $ "ToListLike: wrong length = " ++ show (Prelude.length cs)
+
+instance (KnownNat n, ListLike (Hyper fs), Shapely fs) =>
+         ListLike (Hyper ((Vector n) : fs)) where
+  toListLike (Prism c) = concat $ toListLike $ fmap toList c
+  unToListLike :: forall e . [e] -> Hyper ((Vector n) : fs) e
+  unToListLike cs = Prism $ unToListLike us
+    where
+      us :: [Vector n e]
+      us = map (fromJust . fromList) $
+           chunksOf n cs
+
+      n = fromIntegral $ natVal (Proxy :: Proxy n)
 
 u :: Matrix 2 5 Int
 u = [ [ 1, 2, 3, 4, 5 ]
